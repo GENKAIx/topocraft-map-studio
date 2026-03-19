@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TopoCraft — Редактор карт</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/simplex-noise@2.4.0/simplex-noise.min.js"></script>
+<style>
+  *{box-sizing:border-box}
+  .tool-btn.active{background:#f4f4f5;border-color:#d4d4d8;color:#18181b}
+  .sym-btn.selected{border-color:#18181b;background:#f4f4f5}
+  .pal-sw.selected{border-color:#18181b!important;border-width:2px}
+  .contour-path{stroke:rgba(255,255,255,.07);stroke-width:.8px}
+  .grid-line{pointer-events:none}
+  .river-path{stroke:#60a5fa;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:2px;background:#e4e4e7;outline:none;cursor:pointer}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#18181b;cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#18181b;cursor:pointer;border:none}
+  input[type=number]{-moz-appearance:textfield}
+  input[type=number]::-webkit-inner-spin-button{opacity:1}
+  #map-svg.dragging{cursor:grabbing!important}
+  #map-svg.paint-mode{cursor:none}
+  #map-svg.sym-mode,#map-svg.river-mode{cursor:crosshair}
+  .brush-cursor{fill:rgba(255,255,255,.06);stroke:rgba(255,255,255,.9);stroke-width:1.5;stroke-dasharray:6 4;pointer-events:none}
+  .dim{opacity:.4;pointer-events:none}
+  .dim-t{transition:opacity .2s}
+  aside::-webkit-scrollbar{width:3px}
+  aside::-webkit-scrollbar-thumb{background:#22304a;border-radius:4px}
+
+  .hbtn{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;transition:all .12s;border:none}
+  .hbtn:disabled{opacity:.4;cursor:not-allowed}
+  .nin{width:100%;padding:3px 6px;font-size:12px;border:1px solid #e4e4e7;border-radius:5px;outline:none;text-align:center}
+  .nin:focus{border-color:#a1a1aa}
+  .impbtn{display:flex;align-items:center;gap:5px;width:100%;padding:4px 7px;border-radius:7px;border:1px solid #e4e4e7;font-size:11px;font-weight:500;background:white;cursor:pointer;transition:all .12s;text-align:left}
+  .impbtn:hover{background:#f4f4f5;border-color:#d4d4d8}
+  .sec{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#71717a;font-weight:600;margin-bottom:5px}
+  .expbtn{background:rgba(255,255,255,.88);border:1.5px dashed #9ca3af;border-radius:6px;font-size:11px;font-weight:600;color:#4b5563;cursor:pointer;transition:all .12s;display:flex;align-items:center;gap:3px;padding:3px 8px;backdrop-filter:blur(4px)}
+  .expbtn:hover{background:white;border-color:#6b7280;color:#111;border-style:solid}
+  /* Floating menu */
+  #flt{position:fixed;right:215px;top:120px;z-index:999;width:168px;background:white;border:1px solid #e4e4e7;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15),0 2px 8px rgba(0,0,0,.08);overflow:hidden;user-select:none}
+  #flt-hdr{cursor:move;background:#f4f4f5;padding:7px 10px;font-size:11px;font-weight:700;border-bottom:1px solid #e4e4e7;display:flex;align-items:center;gap:5px;color:#374151;letter-spacing:.03em}
+  #flt-hdr:hover{background:#ebebeb}
+  #flt-body{padding:7px;display:flex;flex-direction:column;gap:5px}
+  /* Mini-map */
+  #mini-map-wrap{
+    position:absolute;
+    left:12px;
+    top:12px;
+    width:240px;
+    height:240px;
+    background:rgba(255,255,255,.92);
+    border:1px solid rgba(0,0,0,.08);
+    border-radius:16px;
+    box-shadow:0 16px 40px rgba(0,0,0,.18);
+    overflow:hidden;
+    z-index:99998;
+    pointer-events:auto;
+    cursor:grab;
+  }
+  #mini-map-toggle{
+    position:absolute;
+    top:6px;
+    left:8px;
+    right:8px;
+    z-index:2;
+    font-size:11px;
+    font-weight:700;
+    color:#374151;
+    display:flex;
+    gap:6px;
+    align-items:center;
+    justify-content:flex-end;
+    pointer-events:auto;
+    background:rgba(255,255,255,.55);
+    backdrop-filter:blur(4px);
+    padding:2px 6px;
+    border-radius:10px;
+    width:max-content;
+    margin-left:auto;
+  }
+  #mini-map-svg{
+    width:100%;
+    height:100%;
+    display:block;
+    position:absolute;
+    inset:0;
+    transform-origin:center center;
+  }
+
+  /* Right info card */
+  .fbtn{display:flex;align-items:center;gap:6px;width:100%;padding:5px 8px;border-radius:7px;border:1px solid #e4e4e7;font-size:11px;font-weight:500;background:white;cursor:pointer;transition:all .12s;text-align:left}
+  .fbtn:hover:not(:disabled){background:#f4f4f5;border-color:#d4d4d8}
+  .fbtn:disabled{opacity:.38;cursor:not-allowed}
+  .fbtn-sep{height:1px;background:#f0f0f0;margin:1px 0}
+  .fbtn-grad{background:linear-gradient(135deg,#fef3c7,#fee2e2);border-color:#fcd34d}
+  .fbtn-grad:hover:not(:disabled){background:linear-gradient(135deg,#fde68a,#fecaca);border-color:#f59e0b}
+  #sl-chaos::-webkit-slider-thumb,#sl-brush::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#18181b;cursor:pointer}
+  #sl-chaos::-moz-range-thumb,#sl-brush::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#18181b;cursor:pointer;border:none}
+</style>
+</head>
+<body class="bg-zinc-50 text-zinc-900 font-sans h-screen flex flex-col overflow-hidden">
+
+<!-- HEADER -->
+<header class="flex-none px-3 py-2 border-b border-zinc-200 bg-white shadow-sm z-10 flex items-center gap-1.5 flex-wrap">
+  <div class="flex items-center gap-1.5 mr-1 flex-shrink-0">
+    <i data-lucide="map" class="w-4 h-4 text-zinc-700"></i>
+    <span class="font-bold text-sm">TopoCraft</span>
+  </div>
+  <select id="shape-sel" class="text-xs border border-zinc-200 rounded-lg px-2 py-1.5 bg-white text-zinc-700 outline-none cursor-pointer">
+    <option value="random">⟳ Случайный</option>
+    <option value="island">Остров</option>
+    <option value="continent">Материк</option>
+    <option value="archipelago">Архипелаг</option>
+    <option value="peninsula">Полуостров</option>
+  </select>
+  <button id="btn-regen" class="hbtn bg-zinc-900 text-white hover:bg-zinc-700"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>Генерировать</button>
+  <div class="w-px h-5 bg-zinc-200 mx-0.5"></div>
+  <button id="btn-save"       class="hbtn bg-emerald-600 text-white hover:bg-emerald-700"><i data-lucide="download" class="w-3.5 h-3.5"></i>Сохранить SVG</button>
+  <button id="btn-load-tr"    class="hbtn bg-white border border-zinc-300 text-zinc-700 hover:bg-zinc-50"><i data-lucide="upload" class="w-3.5 h-3.5"></i>Загрузить SVG</button>
+  <input type="file" id="file-in" accept=".svg" class="hidden">
+  <div class="w-px h-5 bg-zinc-200 mx-0.5"></div>
+  <button id="btn-undo"       disabled class="hbtn bg-white border border-zinc-200 text-zinc-500 disabled:opacity-40 disabled:cursor-not-allowed"><i data-lucide="undo-2" class="w-3.5 h-3.5"></i>Назад</button>
+  <button id="btn-redo"       disabled class="hbtn bg-white border border-zinc-200 text-zinc-500 disabled:opacity-40 disabled:cursor-not-allowed"><i data-lucide="redo-2" class="w-3.5 h-3.5"></i>Вперёд</button>
+  <button id="btn-zoom-rst"   class="hbtn bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50"><i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>Сбросить зум</button>
+</header>
+
+<!-- MAIN -->
+<main class="flex-1 flex overflow-hidden">
+
+<!-- SIDEBAR -->
+<aside class="w-52 border-r border-zinc-200 bg-white flex flex-col gap-3 overflow-y-auto z-10 shadow-sm p-3 flex-shrink-0">
+
+  <div>
+    <div class="sec">Размер карты</div>
+    <div class="flex gap-1.5 mb-1.5">
+      <div class="flex-1"><div class="text-xs text-zinc-500 mb-0.5">Ширина</div><input type="number" id="in-w" class="nin" min="100" max="100000" value="20000"></div>
+      <div class="flex-1"><div class="text-xs text-zinc-500 mb-0.5">Высота</div><input type="number" id="in-h" class="nin" min="100" max="100000" value="20000"></div>
+    </div>
+    <button id="btn-size" class="w-full py-1 text-xs font-medium bg-zinc-100 hover:bg-zinc-200 rounded-lg border border-zinc-200 transition-colors">Применить</button>
+  </div>
+
+  <div>
+    <div class="flex justify-between items-center mb-1.5">
+      <div class="sec mb-0">Делений сетки (по меньшей стороне)</div>
+      <span id="lbl-divs" class="text-xs font-bold text-zinc-600 tabular-nums">50</span>
+    </div>
+    <input type="range" id="sl-divs" min="2" max="100" value="50">
+  </div>
+
+  <div>
+    <div class="sec mb-1">Сетка: цвет и толщина</div>
+    <div class="flex gap-2 mb-1.5">
+      <select id="grid-color" class="text-xs border border-zinc-200 rounded-lg px-2 py-1.5 bg-white flex-1">
+        <option value="black">Чёрный</option>
+        <option value="white">Белый</option>
+      </select>
+      <div class="flex-1 flex items-center gap-1">
+        <span class="text-xs text-zinc-500">Толщ.</span>
+        <input type="range" id="sl-grid-width" min="0.5" max="3" step="0.25" value="3">
+        <span id="lbl-grid-width" class="text-xs font-bold tabular-nums w-6">3</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding:2px 0 0">
+    <label class="flex items-center gap-2 cursor-pointer">
+      <input type="checkbox" id="toggle-grid" checked class="accent-zinc-900">
+      <span class="text-sm font-medium text-zinc-700">Показать сетку</span>
+    </label>
+  </div>
+  <div style="padding:2px 0 0">
+    <label class="flex items-center gap-2 cursor-pointer">
+      <input type="checkbox" id="chk-mini-map" class="accent-violet-600">
+      <span class="text-sm font-medium text-zinc-700">Показать мини карту</span>
+    </label>
+  </div>
+
+  <div class="border-t border-zinc-100"></div>
+
+  <div>
+    <div class="sec">Инструменты</div>
+    <div class="grid grid-cols-2 gap-1">
+      <button id="t-view"  class="tool-btn active py-1.5 rounded border border-zinc-200 bg-zinc-100 text-zinc-700 text-xs font-medium flex items-center justify-center gap-1"><i data-lucide="mouse-pointer-2" class="w-3.5 h-3.5"></i>Просмотр</button>
+      <button id="t-paint" class="tool-btn py-1.5 rounded border border-zinc-200 bg-white text-zinc-700 text-xs font-medium hover:bg-zinc-50 flex items-center justify-center gap-1"><i data-lucide="paintbrush" class="w-3.5 h-3.5"></i>Кисть</button>
+      <button id="t-sym"   class="tool-btn py-1.5 rounded border border-zinc-200 bg-white text-zinc-700 text-xs font-medium hover:bg-zinc-50 flex items-center justify-center gap-1"><i data-lucide="map-pin" class="w-3.5 h-3.5"></i>Метки</button>
+      <button id="t-river" class="tool-btn py-1.5 rounded border border-zinc-200 bg-white text-zinc-700 text-xs font-medium hover:bg-zinc-50 flex items-center justify-center gap-1"><i data-lucide="waves" class="w-3.5 h-3.5"></i>Реки</button>
+    </div>
+  </div>
+
+  <div id="paint-panel" class="dim dim-t flex flex-col gap-2.5">
+    <div>
+      <div class="sec">Высота рельефа</div>
+      <div class="flex flex-col gap-0.5" id="palette"></div>
+    </div>
+  </div>
+
+  <div id="sym-panel" class="dim dim-t flex flex-col gap-2.5">
+    <div>
+      <div class="flex justify-between items-center mb-1"><div class="sec mb-0">Размер иконок</div><span id="lbl-sym-sz" class="text-xs font-bold tabular-nums">5</span></div>
+      <input type="range" id="sl-sym-sz" min="1" max="10" value="5">
+    </div>
+    <div>
+      <div class="sec">Тип метки</div>
+      <div class="grid grid-cols-2 gap-1" id="sym-grid"></div>
+      <p class="text-xs text-zinc-400 mt-1">ПКМ — удалить метку</p>
+    </div>
+    <button id="btn-delete-all-symbols" class="impbtn mt-1" style="border-color:#fecaca;color:#dc2626"><span>🗑</span>Удалить все метки</button>
+  </div>
+
+  <div id="river-panel" class="dim dim-t">
+    <div class="sec">Рисование реки</div>
+    <p class="text-xs text-zinc-500 leading-snug">ЛКМ+ведите — рисуем реку. ПКМ — удалить реку.</p>
+    <p class="text-xs text-zinc-400 mt-1.5">Стрелки = направление течения.</p>
+  </div>
+
+  <div class="border-t border-zinc-100"></div>
+
+  <div>
+    <div class="sec">Улучшения карты</div>
+    <div class="flex flex-col gap-1">
+      <button class="impbtn" data-auto="forest"  data-lo="0.5"  data-hi="2.2"  data-d="0.022"><span>🌲</span>Засадить лесами</button>
+      <button class="impbtn" data-auto="ore"     data-lo="2.0"  data-hi="4.5"  data-d="0.018"><span>⛏</span>Добавить рудники</button>
+      <button class="impbtn" data-auto="city"    data-lo="0.5"  data-hi="1.8"  data-d="0.005"><span>🏛</span>Основать города</button>
+      <button class="impbtn" data-auto="village" data-lo="0.2"  data-hi="1.5"  data-d="0.010"><span>🏘</span>Заселить деревни</button>
+      <button class="impbtn" data-auto="port"    data-lo="-0.4" data-hi="0.3"  data-d="0.012"><span>⚓</span>Добавить порты</button>
+      <button class="impbtn" data-auto="fields"  data-lo="0.1"  data-hi="1.2"  data-d="0.015"><span>🌾</span>Засеять поля</button>
+      <button class="impbtn" data-auto="volcano" data-lo="3.4"  data-hi="4.9"  data-d="0.007"><span>🌋</span>Расставить вулканы</button>
+      <button class="impbtn" data-auto="fish"    data-lo="-2.5" data-hi="-0.4" data-d="0.015"><span>🐟</span>Добавить рыбу</button>
+      <button class="impbtn" data-auto="snow"    data-lo="3.6"  data-hi="4.9"  data-d="0.020"><span>❄️</span>Добавить снег</button>
+      <button id="btn-auto-all" class="impbtn font-semibold" style="background:#fafafa;border-color:#d4d4d8"><span>✨</span>Заселить всё</button>
+    </div>
+  </div>
+
+</aside>
+
+<!-- MAP AREA — SVG fills 100%, expand buttons float on top -->
+<div class="flex-1 overflow-hidden relative" style="background:#52525b">
+  <svg id="map-svg" viewBox="0 0 800 800" preserveAspectRatio="xMidYMid meet"
+    style="width:100%;height:100%;display:block;cursor:grab">
+  </svg>
+  <!-- MINI MAP -->
+  <div id="mini-map-wrap">
+    <svg id="mini-map-svg" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+  <button id="exp-t" class="expbtn" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:5">
+    <i data-lucide="arrow-up" class="w-3 h-3"></i>↑ вверх
+  </button>
+  <button id="exp-b" class="expbtn" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:5">
+    <i data-lucide="arrow-down" class="w-3 h-3"></i>↓ вниз
+  </button>
+  <button id="exp-l" class="expbtn" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:5;flex-direction:column;padding:8px 5px;gap:2px">
+    <i data-lucide="arrow-left" class="w-3 h-3"></i>
+    <span style="writing-mode:vertical-lr;transform:rotate(180deg);font-size:9px">влево</span>
+  </button>
+  <button id="exp-r" class="expbtn" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:5;flex-direction:column;padding:8px 5px;gap:2px">
+    <i data-lucide="arrow-right" class="w-3 h-3"></i>
+    <span style="writing-mode:vertical-lr;font-size:9px">вправо</span>
+  </button>
+</div>
+
+<!-- INFO CARD -->
+<div class="w-40 border-l border-zinc-200 bg-white flex-shrink-0 overflow-y-auto p-3 flex flex-col gap-3 text-xs">
+  <div><div class="sec">Карта</div><div class="flex flex-col gap-0.5 text-zinc-600" id="ic-map"></div></div>
+  <div><div class="sec">Метки</div><div class="flex flex-col gap-0.5" id="ic-syms"><span class="text-zinc-400">Нет</span></div></div>
+  <div><div class="sec">Реки</div><div class="text-zinc-600" id="ic-rivers">0</div></div>
+  <div><div class="sec">Рельеф</div><div class="flex flex-col gap-0.5 text-zinc-600" id="ic-terrain"><span class="text-zinc-400">—</span></div></div>
+  <div><div class="sec">Зум</div><div class="text-zinc-600" id="ic-zoom">100%</div></div>
+  <div style="margin-top:auto;padding-top:6px;border-top:1px solid #f1f5f9;">
+    <div class="sec">Автор</div>
+    <div class="text-zinc-600">
+      <a href="https://t.me/+QROy7_qd8KdhNGQy" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;">Genkai</a>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<!-- ═══ FLOATING MINI-MENU ══════════════════════════════════════════════ -->
+<div id="flt">
+  <div id="flt-hdr">
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <rect y="1" width="12" height="1.5" rx=".75" fill="#9ca3af"/>
+      <rect y="5" width="12" height="1.5" rx=".75" fill="#9ca3af"/>
+      <rect y="9" width="12" height="1.5" rx=".75" fill="#9ca3af"/>
+    </svg>
+    Быстрый доступ
+  </div>
+  <div id="flt-body">
+    <button id="fm-undo" class="fbtn" disabled><i data-lucide="undo-2" class="w-3.5 h-3.5 text-zinc-500"></i>Отменить</button>
+    <button id="fm-redo" class="fbtn" disabled><i data-lucide="redo-2" class="w-3.5 h-3.5 text-zinc-500"></i>Вернуть</button>
+    <div class="fbtn-sep"></div>
+    <div style="padding:2px 6px 6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#71717a;font-weight:600">Размер кисти</span>
+        <span id="lbl-brush" style="font-size:11px;font-weight:700;color:#374151;min-width:1ch;text-align:right">2</span>
+      </div>
+      <input type="range" id="sl-brush" min="1" max="50" value="2" style="-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:2px;background:#e4e4e7;outline:none;cursor:pointer">
+    </div>
+    <div style="padding:0 6px 6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#71717a;font-weight:600">Хаотичность</span>
+        <span id="lbl-chaos" style="font-size:11px;font-weight:700;color:#374151;min-width:1ch;text-align:right">3</span>
+      </div>
+      <input type="range" id="sl-chaos" min="1" max="10" value="3" style="-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:2px;background:#e4e4e7;outline:none;cursor:pointer">
+    </div>
+    <div style="padding:0 6px 6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#71717a;font-weight:600">Градация</span>
+        <span id="lbl-grad" style="font-size:11px;font-weight:700;color:#374151;min-width:1ch;text-align:right">3</span>
+      </div>
+      <input type="range" id="sl-grad" min="1" max="10" value="3" style="-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:2px;background:#e4e4e7;outline:none;cursor:pointer">
+    </div>
+    <div class="fbtn-sep"></div>
+    <button id="fm-smooth"      class="fbtn fbtn-grad"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-600"></i>Сгладить</button>
+    <button id="fm-smooth-last" class="fbtn" disabled><i data-lucide="layers" class="w-3.5 h-3.5 text-violet-500"></i>Сгладить последний слой</button>
+    <label class="flex items-center gap-2 cursor-pointer px-1 py-0.5" style="font-size:11px;color:#374151;">
+      <input type="checkbox" id="chk-auto-smooth-last" class="accent-violet-600" checked>
+      <span>Автоматически сглаживать</span>
+    </label>
+    <div class="fbtn-sep"></div>
+    <div style="padding:0 6px 4px">
+      <div class="sec" style="margin-bottom:6px">Тестовое меню</div>
+      <label class="flex items-center gap-2 cursor-pointer px-1 py-0.5" style="font-size:11px;color:#374151;">
+        <input type="checkbox" id="chk-map-land" class="accent-violet-600">
+        <span>Карта высот (суша)</span>
+      </label>
+      <label class="flex items-center gap-2 cursor-pointer px-1 py-0.5" style="font-size:11px;color:#374151;">
+        <input type="checkbox" id="chk-map-sea" class="accent-violet-600">
+        <span>Карта глубины (море)</span>
+      </label>
+      <label class="flex items-center gap-2 cursor-pointer px-1 py-0.5" style="font-size:11px;color:#374151;">
+        <input type="checkbox" id="chk-cross-section" class="accent-violet-600">
+        <span>Линейка высот</span>
+      </label>
+    </div>
+    <div class="fbtn-sep"></div>
+    <button id="fm-fill-all" class="fbtn"><i data-lucide="paint-bucket" class="w-3.5 h-3.5 text-zinc-600"></i>Залить всё</button>
+    <button id="fm-clear" class="fbtn" style="color:#dc2626;border-color:#fecaca"><i data-lucide="eraser" class="w-3.5 h-3.5"></i>Очистить карту</button>
+  </div>
+</div>
+
+<!-- ═══ HEIGHT STRIP MENU (below quick access) ═════════════════════ -->
+<div id="hstrip-panel" style="position:fixed;right:215px;z-index:99999;width:168px;display:flex;flex-direction:column;gap:6px;pointer-events:auto">
+  <div id="hstrip-host"></div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   CONSTANTS
+═══════════════════════════════════════════════════════ */
+const SYMBOLS={forest:{ru:'Лес',emoji:'🌲'},ore:{ru:'Руда',emoji:'⛏'},city:{ru:'Город',emoji:'🏛'},village:{ru:'Деревня',emoji:'🏘'},castle:{ru:'Замок',emoji:'🏰'},port:{ru:'Порт',emoji:'⚓'},fields:{ru:'Поля',emoji:'🌾'},volcano:{ru:'Вулкан',emoji:'🌋'},fish:{ru:'Рыба',emoji:'🐟'},snow:{ru:'Снег',emoji:'❄️'}};
+const TERRAIN=[
+  {c:'#01012b',n:'Бездна',v:-4.5},{c:'#023e8a',n:'Глубь',v:-3.5},{c:'#0077b6',n:'Океан',v:-2.5},
+  {c:'#0096c7',n:'Море',v:-1.6},{c:'#48cae4',n:'Мелководье',v:-0.8},{c:'#caf0f8',n:'Прибрежное',v:-0.15},
+  {c:'#f0d27f',n:'Пляж',v:0.3},{c:'#e8c84a',n:'Саванна',v:0.75},{c:'#a7c957',n:'Равнина',v:1.3},
+  {c:'#6a994e',n:'Луга',v:1.9},{c:'#c9a85c',n:'Нагорье',v:2.5},{c:'#8b6914',n:'Горы',v:3.15},
+  {c:'#5a3e2b',n:'Высокогорье',v:3.8},{c:'#e8e8e8',n:'Снежные вершины',v:4.5},
+];
+const TC=TERRAIN.map(t=>t.c);
+const TT_BASE=[-5,-4,-3,-2,-1.2,-0.4,0.1,0.5,1.0,1.6,2.2,2.8,3.5,4.1];
+// Alias used by some legacy terrain/contour logic (e.g. expansion edge detection).
+const TT=TT_BASE;
+
+// More contour levels for smoother "depth" transitions.
+// Важно: делаем верхний порог >= 4.5, чтобы "снежные вершины" реально попадали в последнюю
+// точку палитры и отрисовывались как светлые/белые.
+const TT_GRAD=(()=>{
+  const t=[];
+  // Sea/depth section
+  for(let v=-5;v<=0;v+=0.2)t.push(+v.toFixed(3));
+  // Land section
+  for(let v=0.1;v<=4.9;v+=0.2)t.push(+v.toFixed(3));
+  t.sort((a,b)=>a-b);
+  return t.filter((v,i,arr)=>i===0||Math.abs(v-arr[i-1])>1e-9);
+})();
+
+
+const _clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const _lerp=(a,b,t)=>a+(b-a)*t;
+const _hexToRgb=hex=>{
+  const h=hex.replace('#','').trim();
+  const n=parseInt(h.length===3? h.split('').map(ch=>ch+ch).join(''):h,16);
+  return{r:(n>>16)&255,g:(n>>8)&255,b:n&255};
+};
+const _rgbToHex=rgb=>{
+  const c=(v)=>v.toString(16).padStart(2,'0');
+  return`#${c(rgb.r)}${c(rgb.g)}${c(rgb.b)}`;
+};
+const _lerpColor=(c1,c2,t)=>{
+  const a=_hexToRgb(c1),b=_hexToRgb(c2);
+  return _rgbToHex({r:Math.round(_lerp(a.r,b.r,t)),g:Math.round(_lerp(a.g,b.g,t)),b:Math.round(_lerp(a.b,b.b,t))});
+};
+function applyBrightness(hex,brightness){
+  if(typeof hex!=='string'||!hex.startsWith('#'))return hex;
+  const rgb=_hexToRgb(hex);
+  const k=Math.max(0,Math.min(2,brightness));
+  return _rgbToHex({
+    r:Math.round(Math.max(0,Math.min(255,rgb.r*k))),
+    g:Math.round(Math.max(0,Math.min(255,rgb.g*k))),
+    b:Math.round(Math.max(0,Math.min(255,rgb.b*k))),
+  });
+}
+function terrainColor(v){
+  v=_clamp(v,-5,4.9);
+  if(v<=TERRAIN[0].v)return TERRAIN[0].c;
+  if(v>=TERRAIN[TERRAIN.length-1].v)return TERRAIN[TERRAIN.length-1].c;
+  for(let i=0;i<TERRAIN.length-1;i++){
+    const a=TERRAIN[i],b=TERRAIN[i+1];
+    if(v>=a.v && v<=b.v){
+      let t=(v-a.v)/(b.v-a.v);
+      // Water looks better with slightly non-linear blending
+      if(v<0)t=Math.pow(t,0.85);
+      return _lerpColor(a.c,b.c,t);
+    }
+  }
+  return TC[TC.length-1];
+}
+
+/* ═══════════════════════════════════════════════════════
+   HISTORY
+═══════════════════════════════════════════════════════ */
+class History{
+  constructor(m=40){this.m=m;this.p=[];this.f=[];}
+  push(s){this.p.push(s);if(this.p.length>this.m)this.p.shift();this.f=[];}
+  undo(c){if(!this.p.length)return null;this.f.push(c);return this.p.pop();}
+  redo(c){if(!this.f.length)return null;this.p.push(c);return this.f.pop();}
+  canUndo(){return this.p.length>0;}
+  canRedo(){return this.f.length>0;}
+}
+
+/* ═══════════════════════════════════════════════════════
+   MAP GENERATOR
+═══════════════════════════════════════════════════════ */
+class MapGenerator{
+  constructor(el,W,H){
+    this.svgEl=el;this.svg=d3.select(el);
+    this.width=W;this.height=H;
+    this.symbolSize=5;
+    // Grid divisions in map coordinates (separate X/Y to avoid stretching on expand)
+    // Define how many grid lines (intervals) are drawn along the smaller side.
+    // Then the other side count is derived so cells stay squares.
+    this.gridDivMin=50;
+    this.gridLineColor='black';this.gridLineWidth=3;
+    this._cg();
+    this.simplex=new SimplexNoise();
+    this.data=new Array(this.gridW*this.gridH).fill(-6);
+    this.symbols=[];this.rivers=[];
+    this.lastPainted=new Set();
+    this.mapSeaOnly=false;
+    this.mapLandOnly=false;
+    // Throttle heavy render() during continuous painting.
+    this._renderRequested=false;
+    this._contoursCacheKey=null;
+    this._contoursCache=null;
+    this._geoPathCacheKey=null;
+    this._geoPathCache=null;
+    this._build();
+  }
+  _cg(){
+    // Independent grid density per axis.
+    // (Reverted: we were adjusting cell size and it changed brush feel.)
+    this.gridW=Math.max(30,Math.min(180,Math.round(this.width/8)));
+    this.gridH=Math.max(30,Math.min(180,Math.round(this.height/8)));
+  }
+  _build(){
+    this.svg.attr('viewBox',`0 0 ${this.width} ${this.height}`);
+    this.svg.select('.bg-r').remove();
+    this.svg.insert('rect','*').attr('class','bg-r').attr('width',this.width).attr('height',this.height).attr('fill','white');
+    this.gMap =this.svg.append('g').attr('class','map-layer');
+    this.gRiv =this.svg.append('g').attr('class','river-layer');
+    this.gGrid=this.svg.append('g').attr('class','grid-layer');
+    this.gSym =this.svg.append('g').attr('class','sym-layer');
+    this.gProfile=this.svg.append('g').attr('class','profile-layer').style('display','none');
+    this.profLine=this.gProfile.append('line')
+      .attr('x1',0).attr('y1',0).attr('x2',0).attr('y2',0)
+      .attr('stroke','rgba(255,255,255,.92)')
+      .attr('stroke-width',1.5)
+      .attr('stroke-dasharray','7 5')
+      .attr('stroke-linecap','round');
+    this.profP1=this.gProfile.append('circle').attr('r',6).attr('fill','rgba(255,255,255,.92)').attr('stroke','rgba(0,0,0,.55)').attr('stroke-width',1);
+    this.profP2=this.gProfile.append('circle').attr('r',6).attr('fill','rgba(255,255,255,.92)').attr('stroke','rgba(0,0,0,.55)').attr('stroke-width',1);
+    this.profDistText=this.gProfile.append('text')
+      .attr('text-anchor','middle')
+      .attr('dominant-baseline','middle')
+      .attr('font-size','9')
+      .attr('fill','rgba(255,255,255,.95)')
+      .attr('stroke','rgba(0,0,0,.75)')
+      .attr('stroke-width','1')
+      .attr('paint-order','stroke')
+      .style('display','none')
+      .text('');
+    this.bCur =this.svg.append('circle').attr('class','brush-cursor').attr('r',0).style('display','none');
+    this.drawGrid();
+  }
+  resize(W,H){
+    this.width=W;this.height=H;this._cg();
+    this.data=new Array(this.gridW*this.gridH).fill(-6);
+    this.symbols=[];this.rivers=[];this.lastPainted.clear();
+    this.svg.selectAll('*').remove();this._build();
+    // Reset caches (grid size/scale changed)
+    this._contoursCacheKey=null;this._contoursCache=null;
+    this._geoPathCacheKey=null;this._geoPathCache=null;
+  }
+
+  /* ─ Bilinear ─────────────────────────────── */
+  _bl(d,gw,gh,x,y){
+    const x0=Math.floor(x),x1=Math.min(x0+1,gw-1),y0=Math.floor(y),y1=Math.min(y0+1,gh-1);
+    const fx=x-x0,fy=y-y0;
+    return(1-fy)*((1-fx)*d[y0*gw+x0]+fx*d[y0*gw+x1])+fy*((1-fx)*d[y1*gw+x0]+fx*d[y1*gw+x1]);
+  }
+
+  /* ─ Dominant edge value ───────────────────── */
+  _dominantEdge(oData,oGW,oGH,dir){
+    const sw=Math.max(3,Math.floor(Math.min(oGW,oGH)*.1));
+    const vals=[];
+    for(let r=0;r<oGH;r++)
+      for(let c=0;c<oGW;c++){
+        const inStrip=
+          (dir==='right' &&c>=oGW-sw)||(dir==='left'  &&c<sw)||
+          (dir==='bottom'&&r>=oGH-sw)||(dir==='top'   &&r<sw);
+        if(inStrip)vals.push(oData[r*oGW+c]);
+      }
+    const real=vals.filter(v=>v>-5.5);
+    if(!real.length)return -2.5; // default ocean
+    const bc=new Array(TT.length+1).fill(0);
+    real.forEach(v=>{let b=TT.findIndex(t=>v<t);if(b===-1)b=TT.length;bc[b]++;});
+    const db=bc.indexOf(Math.max(...bc));
+    const lo=db>0?TT[db-1]:-5,hi=db<TT.length?TT[db]:5;
+    return(lo+hi)/2;
+  }
+
+  /* ─ Expand map ────────────────────────────── */
+  expandMap(dir){
+    const oW=this.width,oH=this.height,oGW=this.gridW,oGH=this.gridH;
+    const oData=[...this.data];
+    const oSyms=JSON.parse(JSON.stringify(this.symbols));
+    const oRivs=JSON.parse(JSON.stringify(this.rivers));
+    const domVal=this._dominantEdge(oData,oGW,oGH,dir);
+
+    const nW=(dir==='left'||dir==='right')?oW*2:oW;
+    const nH=(dir==='top' ||dir==='bottom')?oH*2:oH;
+    this.width=nW;this.height=nH;
+    // Double grid in expansion direction to preserve detail (do not use _cg)
+    const nGW=(dir==='left'||dir==='right')?oGW*2:oGW;
+    const nGH=(dir==='top'||dir==='bottom')?oGH*2:oGH;
+    this.gridW=nGW;this.gridH=nGH;
+    this.data=new Array(nGW*nGH).fill(-6);
+
+    const ox=(dir==='left')?oGW:0;
+    const oy=(dir==='top')?oGH:0;
+    const tW=oGW;
+    const tH=oGH;
+
+    // Place old data: direct 1:1 copy (no downsampling, preserves full detail)
+    for(let r=0;r<tH;r++)
+      for(let c=0;c<tW;c++){
+        const dr=r+oy,dc=c+ox;
+        if(dr<nGH&&dc<nGW)this.data[dr*nGW+dc]=oData[r*oGW+c];
+      }
+
+    // Fill new half with dominant-based noise
+    const ns=new SimplexNoise();
+    const freq=Math.max(nGW,nGH)/5;
+    // Determine new-area bounds in new grid
+    const nr0=(dir==='bottom')?tH+oy:(dir==='top')?0:0;
+    const nr1=(dir==='top')?oy:(dir==='bottom')?nGH:nGH;
+    const nc0=(dir==='right')?tW+ox:(dir==='left')?0:0;
+    const nc1=(dir==='left')?ox:(dir==='right')?nGW:nGW;
+    for(let r=nr0;r<nr1;r++)
+      for(let c=nc0;c<nc1;c++){
+        const n=(ns.noise2D(c/freq,r/freq)+.5*ns.noise2D(c/freq*2,r/freq*2))/1.5;
+        this.data[r*nGW+c]=Math.max(-5,Math.min(4.9,domVal+n*.65));
+      }
+
+    // Shift SVG coords
+    const sx=(dir==='left')?oW:0;
+    const sy=(dir==='top') ?oH:0;
+    this.symbols=oSyms.map(s=>({...s,x:s.x+sx,y:s.y+sy}));
+    this.rivers =oRivs.map(rv=>rv.map(pt=>({x:pt.x+sx,y:pt.y+sy})));
+    this.lastPainted.clear();
+    this.svg.selectAll('*').remove();this._build();
+    this.render();this.renderSymbols();this.renderRivers();
+  }
+
+  /* ─ Generate ──────────────────────────────── */
+  generateData(shape){
+    const GW=this.gridW,GH=this.gridH;
+    if(shape==='random')shape=['island','continent','archipelago','peninsula'][Math.random()*4|0];
+    if(shape==='archipelago')
+      this.attractors=Array.from({length:5},()=>({x:.08+Math.random()*.84,y:.08+Math.random()*.84,s:.20+Math.random()*.45}));
+    const ns=Math.max(GW,GH)/5;
+    for(let r=0;r<GH;r++)
+      for(let c=0;c<GW;c++){
+        const xn=c/(GW-1),yn=r/(GH-1),nx=c/ns,ny=r/ns;
+        let n=(this.simplex.noise2D(nx,ny)+.5*this.simplex.noise2D(nx*2,ny*2))/1.5;
+        const dx=xn*2-1,dy=yn*2-1,d=Math.hypot(dx,dy);
+        let v;
+        switch(shape){
+          case'island':v=n*5-Math.pow(d,1.8)*2.5+2;break;
+          case'continent':{const e=Math.min(xn,yn,1-xn,1-yn);v=n*4.5-Math.pow(Math.max(0,1-e/.18),1.8)*5+3.5;break;}
+          case'archipelago':{let best=-Infinity;for(const a of this.attractors){const s=a.s*.4-Math.hypot(xn-a.x,yn-a.y);if(s>best)best=s;}v=n*4.5-Math.max(0,-best)/.08+1;break;}
+          case'peninsula':v=n*4-Math.pow(xn,1.2)*2.5-Math.pow(Math.abs(yn-.5)*2,1.8)*1.5+3;break;
+          default:v=n*7-.5;
+        }
+        this.data[r*GW+c]=Math.max(-5,Math.min(4.9,v));
+      }
+    this.render();
+  }
+
+  /* ─ Render ────────────────────────────────── */
+  render(){
+    const wantSmooth=this.mapSeaOnly||this.mapLandOnly;
+    const tt=wantSmooth?TT_GRAD:TT_BASE;
+    const sx=this.width/this.gridW,sy=this.height/this.gridH;
+
+    // Cache geoPath + contours to avoid allocations each render.
+    const contoursKey=`${this.gridW}x${this.gridH}-${wantSmooth?'grad':'base'}`;
+    if(this._contoursCacheKey!==contoursKey){
+      this._contoursCacheKey=contoursKey;
+      this._contoursCache=d3.contours().size([this.gridW,this.gridH]).thresholds(tt);
+    }
+    // Cache geoPath for current scale.
+    const geoKey=`${sx.toFixed(6)}-${sy.toFixed(6)}`;
+    if(this._geoPathCacheKey!==geoKey){
+      this._geoPathCacheKey=geoKey;
+      this._geoPathCache=d3.geoPath(d3.geoTransform({point:function(x,y){this.stream.point(x*sx,y*sy);}}));
+    }
+
+    const path=this._geoPathCache;
+    this.gMap.selectAll('path')
+      .data(this._contoursCache(this.data))
+      .join('path').attr('class','contour-path').attr('d',path)
+      .attr('fill',(d,i)=>{
+        return wantSmooth?terrainColor(d.value):TC[i];
+      })
+      .attr('fill-opacity',d=>{
+        const v=d.value;
+        if(this.mapSeaOnly && this.mapLandOnly) return 1;
+        if(this.mapSeaOnly) return v<0 ? 1 : 0.08;
+        if(this.mapLandOnly) return v>=0 ? 1 : 0.08;
+        return 1;
+      })
+      .attr('stroke','rgba(0,0,0,.04)');
+    // Notify UI (mini-map) that terrain was re-rendered.
+    this.svgEl.dispatchEvent(new CustomEvent('tc-map-rendered'));
+  }
+
+  /* ─ Grid ──────────────────────────────────── */
+  drawGrid(){
+    this.gGrid.selectAll('*').remove();
+    const dMin=Math.max(1,Math.round(this.gridDivMin||10));
+    const minDim=Math.max(1,Math.min(this.width,this.height));
+    const cell=minDim/dMin; // equal map-cell size => squares on screen (uniform SVG scaling)
+    const dX=Math.max(1,Math.round(this.width/cell));
+    const dY=Math.max(1,Math.round(this.height/cell));
+    const sx=this.width/dX,sy=this.height/dY;
+    const stroke=this.gridLineColor==='white'?'rgba(255,255,255,.85)':'rgba(0,0,0,.5)';
+    const w=this.gridLineWidth;
+    for(let i=0;i<=dX;i++){
+      this.gGrid.append('line').attr('x1',i*sx).attr('y1',0).attr('x2',i*sx).attr('y2',this.height).attr('class','grid-line').attr('stroke',stroke).attr('stroke-width',w);
+    }
+    for(let i=0;i<=dY;i++){
+      this.gGrid.append('line').attr('x1',0).attr('y1',i*sy).attr('x2',this.width).attr('y2',i*sy).attr('class','grid-line').attr('stroke',stroke).attr('stroke-width',w);
+    }
+  }
+  setGridVisible(v){this.gGrid.style('display',v?'block':'none');}
+
+  /* ─ Cursor ────────────────────────────────── */
+  showCursor(x,y,r){this.bCur.style('display','block').attr('cx',x).attr('cy',y).attr('r',r);}
+  hideCursor(){this.bCur.style('display','none');}
+
+  /* ─ Profile (2 points) ─────────────────────── */
+  clearProfile(){
+    if(this.gProfile)this.gProfile.style('display','none');
+  }
+  setProfilePoints(p1,p2){
+    if(!this.gProfile)return;
+    this.gProfile.style('display','block');
+    if(p1){
+      this.profP1?.attr('cx',p1.x).attr('cy',p1.y).style('display','block');
+    }else{
+      this.profP1?.style('display','none');
+    }
+    if(p2){
+      this.profP2?.attr('cx',p2.x).attr('cy',p2.y).style('display','block');
+    }else{
+      this.profP2?.style('display','none');
+    }
+    if(p1&&p2){
+      this.profLine?.attr('x1',p1.x).attr('y1',p1.y).attr('x2',p2.x).attr('y2',p2.y);
+      const mx=(p1.x+p2.x)/2,my=(p1.y+p2.y)/2;
+      const dist=Math.hypot(p2.x-p1.x,p2.y-p1.y);
+      this.profDistText
+        ?.attr('x',mx).attr('y',my)
+        .style('display','block')
+        .text(dist.toFixed(0));
+    }
+    else{
+      this.profDistText?.style('display','none');
+    }
+  }
+
+  /* ─ Paint ─────────────────────────────────── */
+  paintPath(pts,val,radius,grad=3){
+    const GW=this.gridW,GH=this.gridH;let ok=false;
+    const gNorm=Math.max(0,Math.min(1,(grad-1)/9));
+    // 1 => резкий край, 10 => мягче и "дотягивает" градации дальше
+    const gamma=4 - gNorm*3.65; // спад влияния по расстоянию
+    const minW=0.22*gNorm; // даже на границе кисти слегка подмешиваем высоту
+    for(const p of pts){
+      const gx=Math.round((p.x/this.width)*GW),gy=Math.round((p.y/this.height)*GH);
+      for(let dy=-radius;dy<=radius;dy++)
+        for(let dx=-radius;dx<=radius;dx++)
+          if(dx*dx+dy*dy<=radius*radius){
+            const nx=gx+dx,ny=gy+dy;
+            if(nx>=0&&nx<GW&&ny>=0&&ny<GH){
+              const idx=ny*GW+nx;
+              const dist=Math.hypot(dx,dy)/radius; // 0..1
+              const core=1-Math.pow(dist,gamma); // 1 в центре, 0 на краю
+              const w=minW+(1-minW)*core; // 1 в центре, minW на краю
+              if(w<=0.0001)continue;
+              const old=this.data[idx];
+              this.data[idx]=Math.max(-5,Math.min(4.9,old+(val-old)*w));
+              this.lastPainted.add(idx);ok=true;
+            }
+          }
+    }
+    if(ok)this.requestRender();
+  }
+  requestRender(){
+    if(this._renderRequested)return;
+    this._renderRequested=true;
+    requestAnimationFrame(()=>{
+      this._renderRequested=false;
+      this.render();
+    });
+  }
+  clearLastPainted(){this.lastPainted.clear();}
+  clear(){this.data.fill(-6);this.lastPainted.clear();this.render();}
+
+  /* ─ Roughness helpers ─────────────────────── */
+  _computeRoughness(){
+    const GW=this.gridW,GH=this.gridH,R=new Float32Array(GW*GH);
+    for(let y=0;y<GH;y++)
+      for(let x=0;x<GW;x++){
+        const v=this.data[y*GW+x];let vr=0,cnt=0;
+        for(let ky=-1;ky<=1;ky++)
+          for(let kx=-1;kx<=1;kx++){
+            const nx=x+kx,ny=y+ky;
+            if(nx>=0&&nx<GW&&ny>=0&&ny<GH){const dd=this.data[ny*GW+nx]-v;vr+=dd*dd;cnt++;}
+          }
+        R[y*GW+x]=cnt?vr/cnt:0;
+      }
+    return R;
+  }
+  hasRoughAreas(){const THRESH=0.12;return this._computeRoughness().some(r=>r>=THRESH);}
+
+  /* ─ Smooth ALL cells ──────────────────────── */
+  smooth(passes=5,chaos=3){
+    const GW=this.gridW,GH=this.gridH,cf=(chaos-1)/9;
+    for(let p=0;p<passes;p++){
+      const next=new Array(GW*GH);
+      for(let y=0;y<GH;y++)
+        for(let x=0;x<GW;x++){
+          const idx=y*GW+x;let sum=0,w=0;
+          for(let ky=-1;ky<=1;ky++)
+            for(let kx=-1;kx<=1;kx++){
+              const nx=x+kx,ny=y+ky;
+              if(nx>=0&&nx<GW&&ny>=0&&ny<GH){const wt=(kx===0&&ky===0)?4:(kx===0||ky===0)?2:1;sum+=this.data[ny*GW+nx]*wt;w+=wt;}
+            }
+          const bl=sum/w,noise=(Math.random()*2-1)*cf*3;
+          next[idx]=bl*(1-cf)+(this.data[idx]+noise)*cf;
+        }
+      this.data=next.map(v=>Math.max(-5,Math.min(4.9,v)));
+    }
+    this.render();
+  }
+
+  /* ─ Smooth ONLY last-painted cells ───────── */
+  smoothLastPainted(passes=5,chaos=3){
+    if(!this.lastPainted.size)return;
+    const GW=this.gridW,GH=this.gridH,cf=(chaos-1)/9;
+    // Expand the dirty set by 2 cells for seamless blending at edges
+    const dirty=new Set();
+    for(const idx of this.lastPainted){
+      const x=idx%GW,y=Math.floor(idx/GW);
+      for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){const nx=x+dx,ny=y+dy;if(nx>=0&&nx<GW&&ny>=0&&ny<GH)dirty.add(ny*GW+nx);}
+    }
+    for(let p=0;p<passes;p++){
+      const next=[...this.data];
+      for(const idx of dirty){
+        const x=idx%GW,y=Math.floor(idx/GW);
+        let sum=0,w=0;
+        for(let ky=-1;ky<=1;ky++)for(let kx=-1;kx<=1;kx++){
+          const nx=x+kx,ny=y+ky;
+          if(nx>=0&&nx<GW&&ny>=0&&ny<GH){const wt=(kx===0&&ky===0)?4:(kx===0||ky===0)?2:1;sum+=this.data[ny*GW+nx]*wt;w+=wt;}
+        }
+        const bl=sum/w,noise=(Math.random()*2-1)*cf*3;
+        next[idx]=Math.max(-5,Math.min(4.9,bl*(1-cf)+(this.data[idx]+noise)*cf));
+      }
+      this.data=next;
+    }
+    this.render();
+  }
+
+  /* ─ Roughen sea ───────────────────────────── */
+  roughenSea(chaos=3){
+    const GW=this.gridW,GH=this.gridH,intensity=(chaos-1)/4*2.5;
+    const ns=new SimplexNoise(),freq=Math.max(GW,GH)/4;
+    for(let y=0;y<GH;y++)for(let x=0;x<GW;x++){
+      const idx=y*GW+x,v=this.data[idx];
+      if(v>=-0.1)continue;
+      const n=(ns.noise2D(x/freq,y/freq)+.5*ns.noise2D(x/freq*2,y/freq*2))/1.5;
+      this.data[idx]=Math.max(-5,Math.min(-0.15,v+n*intensity));
+    }
+    this.render();
+  }
+
+  /* ─ Symbols ───────────────────────────────── */
+  _iscale(){return this.symbolSize*Math.min(this.width,this.height)/2000;}
+  addSymbols(items){this.symbols.push(...items);this.renderSymbols();}
+  addSymbol(x,y,type){this.symbols.push({x,y,type});this.renderSymbols();}
+  removeNearest(x,y){
+    const thr=Math.min(this.width,this.height)*.07;let ni=-1,nd=Infinity;
+    this.symbols.forEach((s,i)=>{const d=Math.hypot(s.x-x,s.y-y);if(d<thr&&d<nd){nd=d;ni=i;}});
+    if(ni>=0){this.symbols.splice(ni,1);this.renderSymbols();return true;}
+    return false;
+  }
+  renderSymbols(){
+    const sc=this._iscale();this.gSym.selectAll('*').remove();
+    for(const sym of this.symbols){
+      const g=this.gSym.append('g').attr('transform',`translate(${sym.x},${sym.y}) scale(${sc})`);
+      g.append('text').attr('text-anchor','middle').attr('dominant-baseline','middle').attr('font-size',20)
+        .attr('font-family','"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif').text(SYMBOLS[sym.type].emoji);
+      g.append('text').attr('y',17).attr('text-anchor','middle').attr('font-size',6.5).attr('fill','white').attr('font-weight','bold')
+        .attr('font-family','Arial,sans-serif').attr('stroke','rgba(0,0,0,.8)').attr('stroke-width',.5).attr('paint-order','stroke')
+        .text(SYMBOLS[sym.type].ru);
+    }
+    this.svgEl.dispatchEvent(new CustomEvent('tc-map-rendered'));
+  }
+
+  /* ─ Rivers ────────────────────────────────── */
+  removeNearestRiver(x,y){
+    const thr=Math.min(this.width,this.height)*.04;let ni=-1,nd=Infinity;
+    this.rivers.forEach((rv,i)=>{for(const pt of rv){const d=Math.hypot(pt.x-x,pt.y-y);if(d<thr&&d<nd){nd=d;ni=i;}}});
+    if(ni>=0){this.rivers.splice(ni,1);this.renderRivers();return true;}
+    return false;
+  }
+  renderRivers(){
+    this.gRiv.selectAll('*').remove();
+    const line=d3.line().x(d=>d.x).y(d=>d.y).curve(d3.curveCatmullRom.alpha(0.5));
+    const sw=Math.max(1,Math.min(this.width,this.height)/300);
+    for(const rv of this.rivers){
+      if(rv.length<2)continue;
+      this.gRiv.append('path').attr('d',line(rv)).attr('class','river-path').attr('stroke-width',sw*3).attr('opacity',.75);
+      this.gRiv.append('path').attr('d',line(rv)).attr('class','river-path').attr('stroke','#93c5fd').attr('stroke-width',sw).attr('opacity',.6);
+      const step=Math.max(4,Math.floor(rv.length/6));
+      for(let i=step;i<rv.length;i+=step){
+        const prev=rv[i-1],curr=rv[i],ang=Math.atan2(curr.y-prev.y,curr.x-prev.x),as=sw*7;
+        const tx=curr.x+Math.cos(ang)*as,ty=curr.y+Math.sin(ang)*as;
+        const lx=curr.x+Math.cos(ang+2.4)*as*.55,ly=curr.y+Math.sin(ang+2.4)*as*.55;
+        const rx=curr.x+Math.cos(ang-2.4)*as*.55,ry=curr.y+Math.sin(ang-2.4)*as*.55;
+        this.gRiv.append('polygon').attr('points',`${tx},${ty} ${lx},${ly} ${rx},${ry}`).attr('fill','#1d4ed8').attr('opacity',.85);
+      }
+    }
+    this.svgEl.dispatchEvent(new CustomEvent('tc-map-rendered'));
+  }
+
+  /* ─ State ─────────────────────────────────── */
+  getState(){
+    return{
+      width:this.width,height:this.height,
+      gridW:this.gridW,gridH:this.gridH,
+      symbolSize:this.symbolSize,
+      gridDivMin:this.gridDivMin,
+      // legacy
+      gridDivisions:this.gridDivMin,
+      gridLineColor:this.gridLineColor,gridLineWidth:this.gridLineWidth,
+      data:[...this.data],
+      symbols:JSON.parse(JSON.stringify(this.symbols)),
+      rivers:JSON.parse(JSON.stringify(this.rivers))
+    };
+  }
+  setState(st){
+    this.width=st.width;this.height=st.height;this.gridW=st.gridW;this.gridH=st.gridH;
+    this.symbolSize=st.symbolSize??5;
+    this.gridDivMin=st.gridDivMin ?? st.gridDivisions ?? 10;
+    this.gridLineColor=st.gridLineColor??'black';this.gridLineWidth=st.gridLineWidth??1;
+    this.data=[...st.data];this.symbols=JSON.parse(JSON.stringify(st.symbols));this.rivers=JSON.parse(JSON.stringify(st.rivers||[]));
+    this.lastPainted.clear();
+    this.svg.selectAll('*').remove();this._build();this.render();this.renderSymbols();this.renderRivers();
+  }
+
+  /* ─ Export/Import ─────────────────────────── */
+  exportSVG(){
+    const clone=this.svgEl.cloneNode(true);clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+    const sty=document.createElementNS('http://www.w3.org/2000/svg','style');
+    sty.textContent='.grid-line{stroke:rgba(255,255,255,.2);stroke-width:.5px}.contour-path{stroke:rgba(255,255,255,.07);stroke-width:.8px}.river-path{stroke:#60a5fa;fill:none;stroke-linecap:round;stroke-linejoin:round}';
+    clone.insertBefore(sty,clone.firstChild);
+    const meta=document.createElementNS('http://www.w3.org/2000/svg','metadata');
+    meta.id='tc-state';meta.textContent=JSON.stringify(this.getState());clone.insertBefore(meta,clone.firstChild);
+    clone.querySelector('.brush-cursor')?.remove();
+    return new XMLSerializer().serializeToString(clone);
+  }
+  importSVG(txt){
+    const doc=new DOMParser().parseFromString(txt,'image/svg+xml');
+    const meta=doc.getElementById('tc-state');if(!meta)return false;
+    try{this.setState(JSON.parse(meta.textContent));return true;}catch(e){return false;}
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   APP
+═══════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded',()=>{
+  lucide.createIcons();
+  const svgEl=document.getElementById('map-svg');
+  const gen=new MapGenerator(svgEl,20000,20000);
+  const hist=new History();
+
+  /* ── Mini-map ───────────────────────────────────────── */
+  const miniWrap=document.getElementById('mini-map-wrap');
+  const miniSvg=document.getElementById('mini-map-svg');
+  const chkMiniMap=document.getElementById('chk-mini-map');
+  const mapAreaEl=svgEl.parentElement;
+  let miniTimer=null;
+
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+  // Default state: hide mini-map until user enables it.
+  if(miniWrap && chkMiniMap) miniWrap.style.display=chkMiniMap.checked ? 'block' : 'none';
+
+  function updateMiniMap(){
+    if(!miniWrap||!miniSvg||!gen.gMap||!gen.gRiv) return;
+    if(chkMiniMap && !chkMiniMap.checked) return;
+    miniSvg.setAttribute('viewBox',`0 0 ${gen.width} ${gen.height}`);
+    miniSvg.innerHTML='';
+    const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.appendChild(gen.gMap.node().cloneNode(true));
+    g.appendChild(gen.gRiv.node().cloneNode(true));
+    g.appendChild(gen.gSym.node().cloneNode(true));
+    miniSvg.appendChild(g);
+  }
+
+  function scheduleMiniUpdate(){
+    if(miniTimer)clearTimeout(miniTimer);
+    miniTimer=setTimeout(updateMiniMap,180);
+  }
+
+  svgEl.addEventListener('tc-map-rendered',scheduleMiniUpdate);
+
+  chkMiniMap?.addEventListener('change',function(){
+    if(!miniWrap||!miniSvg) return;
+    miniWrap.style.display=this.checked?'block':'none';
+    if(this.checked)updateMiniMap();
+  });
+
+  // Drag inside map area
+  if(miniWrap && mapAreaEl){
+    miniWrap.style.left=miniWrap.style.left||'12px';
+    miniWrap.style.top=miniWrap.style.top||'12px';
+    let dragging=false;
+    let offX=0,offY=0;
+
+    const onMove=(e)=>{
+      if(!dragging)return;
+      const mapRect=mapAreaEl.getBoundingClientRect();
+      const w=miniWrap.getBoundingClientRect().width;
+      const h=miniWrap.getBoundingClientRect().height;
+      const maxLeft=Math.max(0,mapRect.width-w);
+      const maxTop=Math.max(0,mapRect.height-h);
+      const newLeft=e.clientX-mapRect.left-offX;
+      const newTop=e.clientY-mapRect.top-offY;
+      miniWrap.style.left=clamp(newLeft,0,maxLeft)+'px';
+      miniWrap.style.top=clamp(newTop,0,maxTop)+'px';
+    };
+
+    const stop=()=>{
+      dragging=false;
+      window.removeEventListener('mousemove',onMove);
+      window.removeEventListener('mouseup',stop);
+      document.body.style.userSelect='';
+      miniWrap.style.cursor='grab';
+    };
+
+    miniWrap.addEventListener('mousedown',(e)=>{
+      if(chkMiniMap && !chkMiniMap.checked) return;
+      if(e.button!==0) return;
+      if(e.target && e.target.closest && e.target.closest('input')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragging=true;
+      const miniRect=miniWrap.getBoundingClientRect();
+      offX=e.clientX-miniRect.left;
+      offY=e.clientY-miniRect.top;
+      document.body.style.userSelect='none';
+      miniWrap.style.cursor='grabbing';
+      window.addEventListener('mousemove',onMove);
+      window.addEventListener('mouseup',stop);
+    });
+  }
+
+  // Initial draw (if already visible)
+  if(chkMiniMap?.checked) updateMiniMap();
+
+  let mode='view',selVal=1.3,selSym='forest',brushSz=2,chaosVal=3,gradVal=3;
+  let isDrawing=false,lastPP=null,currentRiver=null;
+  let vb={x:0,y:0,w:20000,h:20000};
+  let panStart=null,fltDrag=null;
+
+  /* ── Profile (cross-section) state ─────────── */
+  let profileMode=false;
+  let profP1=null,profP2=null;
+  const hstripPanelEl=document.getElementById('hstrip-panel');
+  const hstripHostEl=document.getElementById('hstrip-host');
+  const fltEl=document.getElementById('flt');
+  const updateHstripTop=()=>{
+    if(!hstripPanelEl||!fltEl)return;
+    const r=fltEl.getBoundingClientRect();
+    hstripPanelEl.style.top=(r.bottom+8)+'px';
+  };
+  updateHstripTop();
+  window.addEventListener('resize',updateHstripTop);
+
+  const profBox=document.createElement('div');
+  profBox.id='tc-profile-box';
+  profBox.style.position='relative';
+  profBox.style.width='100%';
+  profBox.style.background='rgba(255,255,255,.92)';
+  profBox.style.border='1px solid rgba(0,0,0,.08)';
+  profBox.style.borderRadius='12px';
+  profBox.style.padding='10px 10px 8px';
+  profBox.style.boxShadow='0 16px 40px rgba(0,0,0,.18)';
+  profBox.style.marginTop='8px';
+  profBox.style.display='none';
+  profBox.style.userSelect='none';
+  hstripHostEl?.appendChild(profBox);
+
+  const profTitle=document.createElement('div');
+  profTitle.textContent='Линейка высот';
+  profTitle.style.fontSize='12px';
+  profTitle.style.fontWeight='800';
+  profTitle.style.marginBottom='6px';
+  profBox.appendChild(profTitle);
+
+  const profSvg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  profSvg.setAttribute('width','160');
+  profSvg.setAttribute('height','100');
+  profSvg.style.display='block';
+  profBox.appendChild(profSvg);
+
+  const profDistBelow=document.createElement('div');
+  profDistBelow.style.fontSize='11px';
+  profDistBelow.style.color='rgba(63,63,70,.95)';
+  profDistBelow.style.fontWeight='600';
+  profDistBelow.style.marginTop='6px';
+  profDistBelow.style.textAlign='center';
+  profDistBelow.textContent='Расстояние: —';
+  profBox.appendChild(profDistBelow);
+
+  const profAxis=document.createElementNS('http://www.w3.org/2000/svg','line');
+  profAxis.setAttribute('x1','14');
+  profAxis.setAttribute('x2','146');
+  profAxis.setAttribute('y1','50');
+  profAxis.setAttribute('y2','50');
+  profAxis.setAttribute('stroke','rgba(0,0,0,.25)');
+  profAxis.setAttribute('stroke-width','1');
+  profSvg.appendChild(profAxis);
+
+  const profPolyline=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+  profPolyline.setAttribute('fill','none');
+  profPolyline.setAttribute('stroke','rgba(17,24,39,.92)');
+  profPolyline.setAttribute('stroke-width','2');
+  profPolyline.setAttribute('stroke-linejoin','round');
+  profPolyline.setAttribute('points','');
+  profSvg.appendChild(profPolyline);
+
+  /* ── Helpers ────────────────────────────────── */
+  function updateProfileGlyphSizes(){
+    if(!gen.profP1||!gen.profP2||!gen.profLine)return;
+    const rect=svgEl.getBoundingClientRect();
+    if(!rect.width||!rect.height||!vb.w||!vb.h)return;
+    // SVG uses uniform scaling with preserveAspectRatio="xMidYMid meet"
+    const s=Math.min(rect.width/vb.w,rect.height/vb.h) || 1;
+    const pxR=8.5;
+    const pxStroke=1.5;
+    const pxLine=2.2;
+    const pxFont=12;
+    const rUser=pxR/s;
+    const swUser=pxStroke/s;
+    const lineUser=pxLine/s;
+    const dash1User=(10/s),dash2User=(7/s);
+    gen.profP1?.attr('r',rUser).attr('stroke-width',swUser);
+    gen.profP2?.attr('r',rUser).attr('stroke-width',swUser);
+    gen.profLine?.attr('stroke-width',lineUser).attr('stroke-dasharray',`${dash1User} ${dash2User}`);
+    gen.profDistText?.attr('font-size',(pxFont/s));
+  }
+
+  const applyVB=()=>{
+    svgEl.setAttribute('viewBox',`${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+    document.getElementById('ic-zoom').textContent=Math.round(gen.width/vb.w*100)+'%';
+    updateProfileGlyphSizes();
+  };
+  const resetZoom=()=>{vb={x:0,y:0,w:gen.width,h:gen.height};applyVB();};
+  const svgPos=e=>{
+    const ctm=svgEl.getScreenCTM();
+    if(ctm){const pt=svgEl.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const sp=pt.matrixTransform(ctm.inverse());return{x:sp.x,y:sp.y};}
+    const r=svgEl.getBoundingClientRect();return{x:vb.x+(e.clientX-r.left)/r.width*vb.w,y:vb.y+(e.clientY-r.top)/r.height*vb.h};
+  };
+  const snap=()=>{hist.push(gen.getState());refreshUR();};
+  const syncInputs=()=>{
+    document.getElementById('in-w').value=gen.width;
+    document.getElementById('in-h').value=gen.height;
+    document.getElementById('sl-divs').value=gen.gridDivMin;
+    document.getElementById('lbl-divs').textContent=gen.gridDivMin;
+  };
+
+  function refreshUR(){
+    document.getElementById('btn-undo').disabled=!hist.canUndo();
+    document.getElementById('btn-redo').disabled=!hist.canRedo();
+    document.getElementById('fm-undo').disabled=!hist.canUndo();
+    document.getElementById('fm-redo').disabled=!hist.canRedo();
+  }
+  function updateLastLayerBtn(){
+    const btn=document.getElementById('fm-smooth-last');
+    if(btn)btn.disabled=gen.lastPainted.size===0;
+  }
+  function updateInfoCard(){
+    document.getElementById('ic-map').innerHTML=`<span>${gen.width}×${gen.height}</span><span class="text-zinc-400">Сетка ${gen.gridW}×${gen.gridH}</span>`;
+    const cnt={};gen.symbols.forEach(s=>cnt[s.type]=(cnt[s.type]||0)+1);
+    const ic=document.getElementById('ic-syms');const ents=Object.entries(cnt);
+    if(!ents.length)ic.innerHTML='<span class="text-zinc-400">Нет</span>';
+    else ic.innerHTML=ents.map(([t,n])=>`<div class="flex justify-between"><span>${SYMBOLS[t].emoji} ${SYMBOLS[t].ru}</span><b>${n}</b></div>`).join('')+`<div class="border-t border-zinc-100 mt-1 pt-1 flex justify-between font-semibold"><span>Всего</span><b>${gen.symbols.length}</b></div>`;
+    document.getElementById('ic-rivers').textContent=gen.rivers.length+' шт.';
+
+    // Terrain coverage (% of cells by elevation bands)
+    const total=gen.data.length;
+    const edges=[];
+    for(let i=0;i<TERRAIN.length-1;i++)edges.push((TERRAIN[i].v+TERRAIN[i+1].v)/2);
+    const counts=new Array(TERRAIN.length).fill(0);
+    for(const v of gen.data){
+      let bi=0;
+      while(bi<edges.length && v>=edges[bi])bi++;
+      counts[bi]++;
+    }
+    const icTerrain=document.getElementById('ic-terrain');
+    if(icTerrain){
+      icTerrain.innerHTML=TERRAIN.map((t,i)=>{
+        const pct=total?Math.round(counts[i]/total*100):0;
+        return `<div class="flex justify-between">
+          <span style="display:flex;align-items:center;gap:6px;">
+            <span style="width:10px;height:10px;background:${t.c};border:1px solid rgba(0,0,0,.15);border-radius:2px;flex-shrink:0;"></span>
+            <span>${pct}%</span>
+            <span>${t.n}</span>
+          </span>
+        </div>`;
+      }).join('');
+    }
+  }
+
+  /* ── Initial map: minimal chaotic island, all terrains + rivers + markers ── */
+  function initMap(){
+    const GW=gen.gridW,GH=gen.gridH;
+    const ns=gen.simplex;
+    const cx=GW/2,cy=GH/2;
+    const R=Math.min(GW,GH)*0.35;
+    gen.data.fill(-2.8);
+    for(let y=0;y<GH;y++)for(let x=0;x<GW;x++){
+      const dx=(x-cx)/GW,dy=(y-cy)/GH;
+      const d=Math.hypot(dx,dy)*Math.max(GW,GH);
+      const noise=(ns.noise2D(x/12,y/12)+0.5*ns.noise2D(x/6,y/6))/1.5;
+      const edge=1-Math.max(0,d/R-0.3+noise*0.25);
+      if(edge<=0)continue;
+      const t=Math.max(0,Math.min(1,edge*1.2+noise*0.3));
+      let v=-2.5+t*7.5+noise*0.8;
+      v=Math.max(-5,Math.min(4.9,v));
+      gen.data[y*GW+x]=v;
+    }
+    gen.render();
+    gen.smooth(2,2);
+  }
+
+  /* ── Regen ─────────────────────────────────── */
+  document.getElementById('btn-regen').addEventListener('click',()=>{
+    snap();gen.simplex=new SimplexNoise();gen.generateData(document.getElementById('shape-sel').value);
+    gen.clearLastPainted();resetZoom();updateInfoCard();updateLastLayerBtn();
+  });
+
+  /* ── Smooth all ────────────────────────────── */
+  function doSmooth(){
+    snap();const btn=document.getElementById('fm-smooth');
+    if(btn){btn.disabled=true;btn.textContent='⏳ Обрабатываю…';}
+    setTimeout(()=>{
+      gen.smooth(5,chaosVal);
+      updateInfoCard();updateLastLayerBtn();
+      if(btn){btn.disabled=false;btn.innerHTML='<i data-lucide="sparkles" class="w-3.5 h-3.5 inline-block"></i> Сгладить';lucide.createIcons();}
+    },20);
+  }
+  document.getElementById('fm-smooth').addEventListener('click',doSmooth);
+
+  /* ── Smooth last painted layer ─────────────── */
+  function doSmoothLast(){
+    if(!gen.lastPainted.size)return;
+    snap();const btn=document.getElementById('fm-smooth-last');
+    if(btn){btn.disabled=true;btn.textContent='⏳…';}
+    setTimeout(()=>{
+      gen.smoothLastPainted(5,chaosVal);
+      updateInfoCard();updateLastLayerBtn();
+      if(btn){btn.disabled=false;btn.innerHTML='<i data-lucide="layers" class="w-3.5 h-3.5 inline-block"></i> Сгладить последний слой';lucide.createIcons();btn.disabled=gen.lastPainted.size===0;}
+    },20);
+  }
+  document.getElementById('fm-smooth-last').addEventListener('click',doSmoothLast);
+
+
+  /* ── Fill all ───────────────────────────────── */
+  document.getElementById('fm-fill-all').addEventListener('click',()=>{
+    snap();gen.data.fill(selVal);gen.lastPainted.clear();gen.render();
+    updateLastLayerBtn();
+    updateInfoCard();
+  });
+
+  /* ── Clear ─────────────────────────────────── */
+  document.getElementById('fm-clear').addEventListener('click',()=>{
+    if(!confirm('Очистить карту?'))return;
+    snap();gen.symbols=[];gen.rivers=[];gen.clear();gen.renderSymbols();gen.renderRivers();
+    updateInfoCard();updateLastLayerBtn();
+  });
+
+  /* ── Delete all symbols ─────────────────────── */
+  document.getElementById('btn-delete-all-symbols').addEventListener('click',()=>{
+    if(!gen.symbols.length)return;
+    if(!confirm('Удалить все метки?'))return;
+    snap();gen.symbols=[];gen.renderSymbols();
+    updateInfoCard();refreshUR();
+  });
+
+  /* ── Save ──────────────────────────────────── */
+  document.getElementById('btn-save').addEventListener('click',()=>{
+    const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([gen.exportSVG()],{type:'image/svg+xml'})),download:'topocraft-map.svg'});
+    a.click();URL.revokeObjectURL(a.href);
+  });
+
+  /* ── Load ──────────────────────────────────── */
+  document.getElementById('btn-load-tr').addEventListener('click',()=>document.getElementById('file-in').click());
+  document.getElementById('file-in').addEventListener('change',e=>{
+    const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=ev=>{
+      snap();
+      if(gen.importSVG(ev.target.result)){
+        syncInputs();document.getElementById('sl-sym-sz').value=gen.symbolSize;document.getElementById('lbl-sym-sz').textContent=gen.symbolSize;
+        document.getElementById('grid-color').value=gen.gridLineColor||'black';
+        document.getElementById('sl-grid-width').value=gen.gridLineWidth||1;document.getElementById('lbl-grid-width').textContent=gen.gridLineWidth||1;
+        gen.drawGrid();
+        resetZoom();updateInfoCard();updateLastLayerBtn();
+      }else alert('Нет данных TopoCraft в файле.');
+    };r.readAsText(f);e.target.value='';
+  });
+
+  /* ── Undo/Redo ─────────────────────────────── */
+  function doUndo(){
+    const prevW=gen.width,prevH=gen.height;
+    const st=hist.undo(gen.getState());
+    if(!st)return;
+    gen.setState(st);
+    // Preserve current zoom window (only remap if canvas size changed)
+    if(prevW!==gen.width||prevH!==gen.height){
+      const sx=gen.width/prevW,sy=gen.height/prevH;
+      vb={x:vb.x*sx,y:vb.y*sy,w:vb.w*sx,h:vb.h*sy};
+    }
+    applyVB();
+    syncInputs();
+    updateInfoCard();
+    updateLastLayerBtn();
+    refreshUR();
+  }
+  function doRedo(){
+    const prevW=gen.width,prevH=gen.height;
+    const st=hist.redo(gen.getState());
+    if(!st)return;
+    gen.setState(st);
+    if(prevW!==gen.width||prevH!==gen.height){
+      const sx=gen.width/prevW,sy=gen.height/prevH;
+      vb={x:vb.x*sx,y:vb.y*sy,w:vb.w*sx,h:vb.h*sy};
+    }
+    applyVB();
+    syncInputs();
+    updateInfoCard();
+    updateLastLayerBtn();
+    refreshUR();
+  }
+  document.getElementById('btn-undo').addEventListener('click',doUndo);
+  document.getElementById('btn-redo').addEventListener('click',doRedo);
+  document.getElementById('fm-undo').addEventListener('click',doUndo);
+  document.getElementById('fm-redo').addEventListener('click',doRedo);
+  document.addEventListener('keydown',e=>{
+    if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&e.key==='z'){e.preventDefault();doUndo();}
+    if((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.shiftKey&&e.key==='z'))){e.preventDefault();doRedo();}
+  });
+
+  /* ── Canvas size ───────────────────────────── */
+  document.getElementById('btn-size').addEventListener('click',()=>{
+    const W=Math.max(100,Math.min(100000,parseInt(document.getElementById('in-w').value)||800));
+    const H=Math.max(100,Math.min(100000,parseInt(document.getElementById('in-h').value)||800));
+    document.getElementById('in-w').value=W;document.getElementById('in-h').value=H;
+    snap();gen.resize(W,H);resetZoom();updateInfoCard();updateLastLayerBtn();
+  });
+
+  /* ── Expand ────────────────────────────────── */
+  ['t','b','l','r'].forEach(d=>{
+    document.getElementById('exp-'+d).addEventListener('click',()=>{
+      snap();gen.expandMap({t:'top',b:'bottom',l:'left',r:'right'}[d]);
+      syncInputs();resetZoom();updateInfoCard();updateLastLayerBtn();
+    });
+  });
+
+  /* ── Grid ──────────────────────────────────── */
+  document.getElementById('sl-divs').addEventListener('input',function(){
+    gen.gridDivMin=+this.value;
+    document.getElementById('lbl-divs').textContent=this.value;
+    gen.drawGrid();
+    if(!document.getElementById('toggle-grid').checked)gen.setGridVisible(false);
+  });
+  document.getElementById('toggle-grid').addEventListener('change',e=>gen.setGridVisible(e.target.checked));
+  document.getElementById('grid-color').addEventListener('change',function(){gen.gridLineColor=this.value;gen.drawGrid();});
+  document.getElementById('sl-grid-width').addEventListener('input',function(){gen.gridLineWidth=+this.value;document.getElementById('lbl-grid-width').textContent=this.value;gen.drawGrid();});
+
+  /* ── Zoom reset ────────────────────────────── */
+  document.getElementById('btn-zoom-rst').addEventListener('click',resetZoom);
+
+  /* ── Chaos slider ──────────────────────────── */
+  document.getElementById('sl-chaos').addEventListener('input',function(){chaosVal=+this.value;document.getElementById('lbl-chaos').textContent=this.value;});
+
+  /* ── Gradation slider ─────────────────────── */
+  document.getElementById('sl-grad').addEventListener('input',function(){gradVal=+this.value;document.getElementById('lbl-grad').textContent=this.value;});
+
+  /* ── Visual height/depth overlays ───────────────────────── */
+  const chkSea=document.getElementById('chk-map-sea');
+  const chkLand=document.getElementById('chk-map-land');
+  chkSea.addEventListener('change',function(){
+    gen.mapSeaOnly=this.checked;
+    gen.render();
+  });
+  chkLand.addEventListener('change',function(){
+    gen.mapLandOnly=this.checked;
+    gen.render();
+  });
+
+  /* ── Cross-section profile ─────────────────────────────── */
+  const chkProfile=document.getElementById('chk-cross-section');
+  function clearProfileUI(){
+    profP1=null;profP2=null;
+    gen.clearProfile();
+    profBox.style.display='none';
+    profPolyline.setAttribute('points','');
+    profDistBelow.textContent='Расстояние: —';
+  }
+
+  function renderProfile(p1,p2){
+    if(!p1||!p2)return;
+    profBox.style.display='block';
+
+    const dist=Math.hypot(p2.x-p1.x,p2.y-p1.y);
+    profDistBelow.textContent=`Расстояние: ${dist.toFixed(0)}`;
+
+    const chartLeft=14,chartRight=146,chartTop=8,chartBottom=92;
+    const n=140;
+    const minV=-5,maxV=4.9;
+    const pts=[];
+    for(let i=0;i<n;i++){
+      const t=i/(n-1);
+      const x=p1.x+(p2.x-p1.x)*t;
+      const y=p1.y+(p2.y-p1.y)*t;
+      const gx=(x/gen.width)*(gen.gridW-1);
+      const gy=(y/gen.height)*(gen.gridH-1);
+      const v=gen._bl(gen.data,gen.gridW,gen.gridH,gx,gy);
+      const vn=Math.max(minV,Math.min(maxV,v));
+      const yy=chartTop+(1-(vn-minV)/(maxV-minV))*(chartBottom-chartTop);
+      const xx=chartLeft+(chartRight-chartLeft)*(i/(n-1));
+      pts.push(`${xx.toFixed(2)},${yy.toFixed(2)}`);
+    }
+    profPolyline.setAttribute('points',pts.join(' '));
+  }
+
+  chkProfile.addEventListener('change',function(){
+    profileMode=this.checked;
+    if(!profileMode){
+      clearProfileUI();
+      setMode('paint');
+    }else{
+      setMode('view'); // to pick points without panning/other tools
+      profP1=null;profP2=null;
+      gen.clearProfile();
+      profBox.style.display='block';
+      profPolyline.setAttribute('points','');
+      profDistBelow.textContent='Расстояние: —';
+    }
+  });
+
+  /* ── Tools ─────────────────────────────────── */
+  const tBtns=[document.getElementById('t-view'),document.getElementById('t-paint'),document.getElementById('t-sym'),document.getElementById('t-river')];
+  const panels=[null,document.getElementById('paint-panel'),document.getElementById('sym-panel'),document.getElementById('river-panel')];
+  function setMode(m){
+    mode=m;tBtns.forEach(b=>{b.classList.remove('active','bg-zinc-100');b.classList.add('bg-white');});panels.forEach(p=>{if(p)p.classList.add('dim');});
+    const mi={view:0,paint:1,sym:2,river:3}[m];tBtns[mi].classList.add('active','bg-zinc-100');tBtns[mi].classList.remove('bg-white');if(panels[mi])panels[mi].classList.remove('dim');
+    ['paint-mode','sym-mode','river-mode'].forEach(c=>svgEl.classList.remove(c));
+    if(m==='paint')svgEl.classList.add('paint-mode');if(m==='sym')svgEl.classList.add('sym-mode');if(m==='river')svgEl.classList.add('river-mode');
+    if(m!=='paint')gen.hideCursor();
+  }
+  document.getElementById('t-view') .addEventListener('click',()=>setMode('view'));
+  document.getElementById('t-paint').addEventListener('click',()=>setMode('paint'));
+  document.getElementById('t-sym')  .addEventListener('click',()=>setMode('sym'));
+  document.getElementById('t-river').addEventListener('click',()=>setMode('river'));
+
+  /* ── Brush & symbol sliders ────────────────── */
+  document.getElementById('sl-brush').addEventListener('input',function(){brushSz=+this.value;document.getElementById('lbl-brush').textContent=this.value;});
+  brushSz=+document.getElementById('sl-brush').value;
+  document.getElementById('sl-sym-sz').addEventListener('input',function(){gen.symbolSize=+this.value;document.getElementById('lbl-sym-sz').textContent=this.value;gen.renderSymbols();});
+
+  /* ── Terrain palette ───────────────────────── */
+  TERRAIN.forEach((t,i)=>{
+    const div=document.createElement('div');
+    div.className='pal-sw flex items-center gap-1.5 p-0.5 rounded-md cursor-pointer border border-transparent hover:border-zinc-300';
+    div.innerHTML=`<div class="w-4 h-4 rounded flex-shrink-0 shadow-sm" style="background:${t.c}"></div><span class="text-xs text-zinc-600">${t.n}</span>`;
+    div.addEventListener('click',()=>{document.querySelectorAll('.pal-sw').forEach(e=>e.classList.remove('selected'));div.classList.add('selected');selVal=t.v;});
+    document.getElementById('palette').appendChild(div);
+    if(i===8)div.classList.add('selected');
+  });
+
+  /* ── Symbol picker (sidebar) ───────────────── */
+  function selectSym(key){selSym=key;document.querySelectorAll('.sym-btn').forEach(b=>b.classList.remove('selected'));document.querySelectorAll(`[data-sym-key="${key}"]`).forEach(b=>b.classList.add('selected'));}
+  Object.entries(SYMBOLS).forEach(([key,info],idx)=>{
+    const btn=document.createElement('button');
+    btn.className=`sym-btn flex items-center gap-1 px-1.5 py-1 rounded-lg border border-zinc-200 text-left hover:bg-zinc-50 transition-colors${idx===0?' selected border-zinc-800 bg-zinc-100':''}`;
+    btn.dataset.symKey=key;
+    btn.innerHTML=`<span class="text-base">${info.emoji}</span><span class="text-xs text-zinc-700 font-medium leading-tight">${info.ru}</span>`;
+    btn.addEventListener('click',()=>selectSym(key));
+    document.getElementById('sym-grid').appendChild(btn);
+  });
+
+  /* ── Improvements ──────────────────────────── */
+  function autoPlace(type,lo,hi,density){
+    snap();
+    const GW=gen.gridW,GH=gen.gridH,minD=Math.min(gen.width,gen.height)*.08;
+    const cands=[];
+    for(let r=0;r<GH;r++)for(let c=0;c<GW;c++){const v=gen.data[r*GW+c];if(v>=lo&&v<=hi)cands.push({x:(c+.5)/GW*gen.width,y:(r+.5)/GH*gen.height});}
+    cands.sort(()=>Math.random()-.5);const n=Math.max(1,Math.floor(cands.length*density));const items=[];const placed=[...gen.symbols];
+    for(const c of cands){if(items.length>=n)break;if(![...placed,...items].some(s=>Math.hypot(s.x-c.x,s.y-c.y)<minD))items.push({x:c.x,y:c.y,type});}
+    gen.addSymbols(items);updateInfoCard();refreshUR();
+  }
+  document.querySelectorAll('.impbtn[data-auto]').forEach(btn=>btn.addEventListener('click',()=>autoPlace(btn.dataset.auto,+btn.dataset.lo,+btn.dataset.hi,+btn.dataset.d)));
+  document.getElementById('btn-auto-all').addEventListener('click',()=>{
+    snap();
+    [['forest',0.5,2.2,.018],['ore',2.0,4.5,.015],['city',0.5,1.8,.004],['village',0.2,1.5,.008],['port',-0.4,0.3,.010],['fields',0.1,1.2,.012],['volcano',3.4,4.9,.006]].forEach(([t,lo,hi,d])=>{
+      const GW=gen.gridW,GH=gen.gridH,minD=Math.min(gen.width,gen.height)*.08;
+      const cands=[];for(let r=0;r<GH;r++)for(let c=0;c<GW;c++){const v=gen.data[r*GW+c];if(v>=lo&&v<=hi)cands.push({x:(c+.5)/GW*gen.width,y:(r+.5)/GH*gen.height});}
+      cands.sort(()=>Math.random()-.5);const n=Math.max(1,Math.floor(cands.length*d));const items=[];const placed=[...gen.symbols];
+      for(const cc of cands){if(items.length>=n)break;if(![...placed,...items].some(s=>Math.hypot(s.x-cc.x,s.y-cc.y)<minD))items.push({x:cc.x,y:cc.y,type:t});}
+      gen.symbols.push(...items);
+    });
+    gen.renderSymbols();updateInfoCard();refreshUR();
+  });
+
+  /* ══ MOUSE ═════════════════════════════════════ */
+  const brushR=()=>brushSz*(gen.width/gen.gridW);
+
+  /* Wheel zoom */
+  svgEl.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const f=e.deltaY>0?1.12:.89,p=svgPos(e);
+    vb.w*=f;vb.h*=f;vb.x=p.x-(p.x-vb.x)*f;vb.y=p.y-(p.y-vb.y)*f;
+    vb.w=Math.max(gen.width*.05,Math.min(gen.width*4,vb.w));vb.h=Math.max(gen.height*.05,Math.min(gen.height*4,vb.h));
+    applyVB();
+  },{passive:false});
+
+  /* Mousedown */
+  svgEl.addEventListener('mousedown',e=>{
+    // Middle mouse = pan always (Figma style)
+    if(e.button===1){e.preventDefault();panStart={mx:e.clientX,my:e.clientY,vbx:vb.x,vby:vb.y};svgEl.classList.add('dragging');return;}
+    const p=svgPos(e);
+    if(mode==='view'&&e.button===0){
+      if(profileMode){
+        e.preventDefault();
+        if(!profP1){profP1=p;profP2=null;gen.setProfilePoints(profP1,null);profPolyline.setAttribute('points','');}
+        else if(!profP2){profP2=p;gen.setProfilePoints(profP1,profP2);renderProfile(profP1,profP2);}
+        else{profP1=p;profP2=null;gen.setProfilePoints(profP1,null);profPolyline.setAttribute('points','');}
+        return;
+      }
+      panStart={mx:e.clientX,my:e.clientY,vbx:vb.x,vby:vb.y};
+      svgEl.classList.add('dragging');
+      return;
+    }
+    if(mode==='paint'&&e.button===0){
+      snap();gen.clearLastPainted();
+      isDrawing=true;lastPP=null;
+      strokeTo(p);
+    }
+    if(mode==='sym'){
+      if(e.button===2){snap();gen.removeNearest(p.x,p.y);updateInfoCard();refreshUR();}
+      else if(e.button===0){snap();gen.addSymbol(p.x,p.y,selSym);updateInfoCard();refreshUR();}
+    }
+    if(mode==='river'&&e.button===0){snap();currentRiver=[p];gen.rivers.push(currentRiver);}
+    if(mode==='river'&&e.button===2){e.preventDefault();snap();gen.removeNearestRiver(p.x,p.y);updateInfoCard();refreshUR();}
+  });
+  svgEl.addEventListener('contextmenu',e=>{if(mode==='sym'||mode==='river')e.preventDefault();});
+  svgEl.addEventListener('auxclick',e=>{if(e.button===1)e.preventDefault();});
+
+  /* Floating menu drag – header mousedown */
+  const flt=document.getElementById('flt');
+  document.getElementById('flt-hdr').addEventListener('mousedown',e=>{
+    e.preventDefault();e.stopPropagation();
+    const r=flt.getBoundingClientRect();
+    fltDrag={mx:e.clientX,my:e.clientY,fx:r.left,fy:r.top};
+  });
+
+  /* Global mousemove */
+  window.addEventListener('mousemove',e=>{
+    // Floating menu drag (highest priority)
+    if(fltDrag){
+      flt.style.left=(fltDrag.fx+e.clientX-fltDrag.mx)+'px';
+      flt.style.top =(fltDrag.fy+e.clientY-fltDrag.my)+'px';
+      flt.style.right='auto';
+      updateHstripTop();
+      return;
+    }
+    // Map pan
+    if(panStart){
+      const ctm=svgEl.getScreenCTM();
+      const sc=ctm?1/ctm.a:vb.w/svgEl.getBoundingClientRect().width;
+      vb.x=panStart.vbx-(e.clientX-panStart.mx)*sc;vb.y=panStart.vby-(e.clientY-panStart.my)*sc;
+      applyVB();return;
+    }
+    // Paint cursor
+    if(mode==='paint'){const p=svgPos(e);gen.showCursor(p.x,p.y,brushR());if(isDrawing)strokeTo(p);}
+    else gen.hideCursor();
+    // River draw
+    if(mode==='river'&&currentRiver&&e.buttons===1){
+      const p=svgPos(e),last=currentRiver[currentRiver.length-1];
+      const minD=Math.min(gen.width,gen.height)/150;
+      if(Math.hypot(p.x-last.x,p.y-last.y)>minD){currentRiver.push(p);gen.renderRivers();}
+    }
+  });
+
+  /* Global mouseup */
+  window.addEventListener('mouseup',e=>{
+    const wasD=isDrawing,wasR=currentRiver;
+    fltDrag=null;panStart=null;svgEl.classList.remove('dragging');
+    isDrawing=false;lastPP=null;
+    if(wasR){
+      if(wasR.length<4){gen.rivers.pop();gen.renderRivers();}
+      currentRiver=null;updateInfoCard();refreshUR();
+    }else if(wasD){
+      const chk=document.getElementById('chk-auto-smooth-last');
+      if(chk&&chk.checked&&gen.lastPainted.size){gen.smoothLastPainted(5,chaosVal);}
+      updateLastLayerBtn();
+      updateInfoCard();
+      refreshUR();
+    }
+  });
+
+  svgEl.addEventListener('mouseleave',()=>{
+    gen.hideCursor();
+    lastPP=null;
+  });
+
+  /* Smooth stroke */
+  function strokeTo(p){
+    if(!lastPP){gen.paintPath([p],selVal,brushSz,gradVal);lastPP=p;return;}
+    const dx=p.x-lastPP.x,dy=p.y-lastPP.y,dist=Math.hypot(dx,dy),step=Math.max(1,brushR()*.25);
+    if(dist<step*.5)return;
+    const cnt=Math.ceil(dist/step),pts=[];
+    for(let i=1;i<=cnt;i++)pts.push({x:lastPP.x+dx*(i/cnt),y:lastPP.y+dy*(i/cnt)});
+    gen.paintPath(pts,selVal,brushSz,gradVal);lastPP=p;
+  }
+
+  /* ── Startup ───────────────────────────────── */
+  initMap();
+  applyVB();
+  setMode('paint');
+  updateInfoCard();updateLastLayerBtn();
+});
+</script>
+</body>
+</html>
