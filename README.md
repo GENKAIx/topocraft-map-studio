@@ -1,10 +1,7 @@
-﻿# TopoCraft (тестовая версия)
+﻿# TopoCraft
 
-Открыть:
-- index.html (будет бейдж TEST VERSION)
-
-Отличия:
-- только тестовая пометка; редактор тот же
+Демо:
+https://genkaix.github.io/topocraft-map-studio/
 
 Автор/создатель:
 - https://t.me/genkai_ai
