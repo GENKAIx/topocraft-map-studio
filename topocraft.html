@@ -40,7 +40,7 @@
   .expbtn{background:rgba(255,255,255,.88);border:1.5px dashed #9ca3af;border-radius:6px;font-size:11px;font-weight:600;color:#4b5563;cursor:pointer;transition:all .12s;display:flex;align-items:center;gap:3px;padding:3px 8px;backdrop-filter:blur(4px)}
   .expbtn:hover{background:white;border-color:#6b7280;color:#111;border-style:solid}
   /* Floating menu */
-  #flt{position:fixed;right:215px;top:120px;z-index:999;width:168px;background:white;border:1px solid #e4e4e7;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15),0 2px 8px rgba(0,0,0,.08);overflow:hidden;user-select:none}
+  #flt{position:fixed;right:340px;top:50%;transform:translateY(-50%);z-index:999;width:168px;background:white;border:1px solid #e4e4e7;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15),0 2px 8px rgba(0,0,0,.08);overflow:hidden;user-select:none}
   #flt-hdr{cursor:move;background:#f4f4f5;padding:7px 10px;font-size:11px;font-weight:700;border-bottom:1px solid #e4e4e7;display:flex;align-items:center;gap:5px;color:#374151;letter-spacing:.03em}
   #flt-hdr:hover{background:#ebebeb}
   #flt-body{padding:7px;display:flex;flex-direction:column;gap:5px}
@@ -109,22 +109,7 @@
     <i data-lucide="map" class="w-4 h-4 text-zinc-700"></i>
     <span class="font-bold text-sm">TopoCraft</span>
   </div>
-  <select id="shape-sel" class="text-xs border border-zinc-200 rounded-lg px-2 py-1.5 bg-white text-zinc-700 outline-none cursor-pointer">
-    <option value="random">⟳ Случайный</option>
-    <option value="island">Остров</option>
-    <option value="continent">Материк</option>
-    <option value="archipelago">Архипелаг</option>
-    <option value="peninsula">Полуостров</option>
-  </select>
-  <button id="btn-regen" class="hbtn bg-zinc-900 text-white hover:bg-zinc-700"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>Генерировать</button>
-  <div class="w-px h-5 bg-zinc-200 mx-0.5"></div>
-  <button id="btn-save"       class="hbtn bg-emerald-600 text-white hover:bg-emerald-700"><i data-lucide="download" class="w-3.5 h-3.5"></i>Сохранить SVG</button>
-  <button id="btn-load-tr"    class="hbtn bg-white border border-zinc-300 text-zinc-700 hover:bg-zinc-50"><i data-lucide="upload" class="w-3.5 h-3.5"></i>Загрузить SVG</button>
   <input type="file" id="file-in" accept=".svg" class="hidden">
-  <div class="w-px h-5 bg-zinc-200 mx-0.5"></div>
-  <button id="btn-undo"       disabled class="hbtn bg-white border border-zinc-200 text-zinc-500 disabled:opacity-40 disabled:cursor-not-allowed"><i data-lucide="undo-2" class="w-3.5 h-3.5"></i>Назад</button>
-  <button id="btn-redo"       disabled class="hbtn bg-white border border-zinc-200 text-zinc-500 disabled:opacity-40 disabled:cursor-not-allowed"><i data-lucide="redo-2" class="w-3.5 h-3.5"></i>Вперёд</button>
-  <button id="btn-zoom-rst"   class="hbtn bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50"><i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>Сбросить зум</button>
 </header>
 
 <!-- MAIN -->
@@ -268,6 +253,14 @@
   <div><div class="sec">Реки</div><div class="text-zinc-600" id="ic-rivers">0</div></div>
   <div><div class="sec">Рельеф</div><div class="flex flex-col gap-0.5 text-zinc-600" id="ic-terrain"><span class="text-zinc-400">—</span></div></div>
   <div><div class="sec">Зум</div><div class="text-zinc-600" id="ic-zoom">100%</div></div>
+  <div>
+    <div class="sec">Действия</div>
+    <div class="flex flex-col gap-1">
+      <button id="btn-zoom-rst" class="impbtn"><i data-lucide="maximize-2" class="w-3.5 h-3.5"></i><span>Сбросить зум</span></button>
+      <button id="btn-save" class="impbtn" style="background:#16a34a;color:#fff;border-color:#15803d;"><i data-lucide="download" class="w-3.5 h-3.5"></i><span>Сохранить SVG</span></button>
+      <button id="btn-load-tr" class="impbtn"><i data-lucide="upload" class="w-3.5 h-3.5"></i><span>Загрузить SVG</span></button>
+    </div>
+  </div>
   <div style="margin-top:auto;padding-top:6px;border-top:1px solid #f1f5f9;">
     <div class="sec">Автор</div>
     <div class="text-zinc-600">
@@ -1119,8 +1112,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   };
 
   function refreshUR(){
-    document.getElementById('btn-undo').disabled=!hist.canUndo();
-    document.getElementById('btn-redo').disabled=!hist.canRedo();
+    const topUndo=document.getElementById('btn-undo');
+    const topRedo=document.getElementById('btn-redo');
+    if(topUndo)topUndo.disabled=!hist.canUndo();
+    if(topRedo)topRedo.disabled=!hist.canRedo();
     document.getElementById('fm-undo').disabled=!hist.canUndo();
     document.getElementById('fm-redo').disabled=!hist.canRedo();
   }
@@ -1129,7 +1124,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(btn)btn.disabled=gen.lastPainted.size===0;
   }
   function updateInfoCard(){
-    document.getElementById('ic-map').innerHTML=`<span>${gen.width}×${gen.height}</span><span class="text-zinc-400">Сетка ${gen.gridW}×${gen.gridH}</span>`;
+    document.getElementById('ic-map').innerHTML=`<span>${gen.width}×${gen.height}</span>`;
     const cnt={};gen.symbols.forEach(s=>cnt[s.type]=(cnt[s.type]||0)+1);
     const ic=document.getElementById('ic-syms');const ents=Object.entries(cnt);
     if(!ents.length)ic.innerHTML='<span class="text-zinc-400">Нет</span>';
@@ -1182,12 +1177,6 @@ document.addEventListener('DOMContentLoaded',()=>{
     gen.render();
     gen.smooth(2,2);
   }
-
-  /* ── Regen ─────────────────────────────────── */
-  document.getElementById('btn-regen').addEventListener('click',()=>{
-    snap();gen.simplex=new SimplexNoise();gen.generateData(document.getElementById('shape-sel').value);
-    gen.clearLastPainted();resetZoom();updateInfoCard();updateLastLayerBtn();
-  });
 
   /* ── Smooth all ────────────────────────────── */
   function doSmooth(){
@@ -1292,8 +1281,8 @@ document.addEventListener('DOMContentLoaded',()=>{
     updateLastLayerBtn();
     refreshUR();
   }
-  document.getElementById('btn-undo').addEventListener('click',doUndo);
-  document.getElementById('btn-redo').addEventListener('click',doRedo);
+  document.getElementById('btn-undo')?.addEventListener('click',doUndo);
+  document.getElementById('btn-redo')?.addEventListener('click',doRedo);
   document.getElementById('fm-undo').addEventListener('click',doUndo);
   document.getElementById('fm-redo').addEventListener('click',doRedo);
   document.addEventListener('keydown',e=>{
@@ -1512,6 +1501,13 @@ document.addEventListener('DOMContentLoaded',()=>{
   const flt=document.getElementById('flt');
   document.getElementById('flt-hdr').addEventListener('mousedown',e=>{
     e.preventDefault();e.stopPropagation();
+    if(flt.style.transform){
+      const rr=flt.getBoundingClientRect();
+      flt.style.transform='none';
+      flt.style.left=rr.left+'px';
+      flt.style.top=rr.top+'px';
+      flt.style.right='auto';
+    }
     const r=flt.getBoundingClientRect();
     fltDrag={mx:e.clientX,my:e.clientY,fx:r.left,fy:r.top};
   });
